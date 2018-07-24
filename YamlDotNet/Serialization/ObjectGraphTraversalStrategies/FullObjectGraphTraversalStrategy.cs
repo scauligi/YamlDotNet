@@ -185,9 +185,35 @@ namespace YamlDotNet.Serialization.ObjectGraphTraversalStrategies
 
             visitor.VisitSequenceStart(value, itemType, context);
 
-            foreach (var item in (IEnumerable)value.Value)
+            if (itemType.IsGenericType && itemType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
             {
-                Traverse(GetObjectDescriptor(item, itemType), visitor, currentDepth, context);
+                var kvpType = itemType;
+                if (kvpType != null)
+                {
+                    var keyType = kvpType.GetGenericArguments()[0];
+                    var valType = kvpType.GetGenericArguments()[1];
+                    foreach (var entry in (IEnumerable)value.Value)
+                    {
+                        visitor.VisitMappingStart(GetObjectDescriptor(entry, kvpType), keyType, valType, context);
+                        var keyValue = kvpType.GetProperty("Key").GetGetMethod().Invoke(entry, null);
+                        var valValue = kvpType.GetProperty("Value").GetGetMethod().Invoke(entry, null);
+                        var key = GetObjectDescriptor(keyValue, keyType);
+                        var val = GetObjectDescriptor(valValue, valType);
+                        if (visitor.EnterMapping(key, val, context))
+                        {
+                            Traverse(key, visitor, currentDepth, context);
+                            Traverse(val, visitor, currentDepth, context);
+                        }
+                        visitor.VisitMappingEnd(GetObjectDescriptor(entry, kvpType), context);
+                    }
+                }
+            }
+            else
+            {
+                foreach (var item in (IEnumerable)value.Value)
+                {
+                    Traverse(GetObjectDescriptor(item, itemType), visitor, currentDepth, context);
+                }
             }
 
             visitor.VisitSequenceEnd(value, context);
